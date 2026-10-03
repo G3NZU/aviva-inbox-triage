@@ -1,0 +1,8 @@
+# Pinned top-level dependencies (tested on Python 3.14).
+fastapi==0.142.2
+uvicorn==0.54.0
+anthropic==1.11.0
+pydantic==2.13.5
+python-dotenv==1.2.4
+pytest==9.1.1
+httpx==0.28.1

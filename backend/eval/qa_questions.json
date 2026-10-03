@@ -1,0 +1,77 @@
+{
+  "_about": "Q&A evaluation set, scored by run_eval.py --qa. gist: what a good answer says. expected_refs: claim refs a good answer cites (via its cited messages). must_mention: words a good answer contains (case-insensitive). expect_refusal: true when the mailbox holds no evidence.",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "Was there any action required for Bridgegate Brokers?",
+      "gist": "Yes: Bridgegate Brokers sent the escape-of-water claim form for PIN-HOM-533661 (Aberdeen AB10) and asked twice on 2 Feb to confirm cover, excess and the initial assessment plan; nobody has replied.",
+      "expected_refs": ["PIN-HOM-533661"],
+      "must_mention": ["cover", "excess"],
+      "expect_refusal": false
+    },
+    {
+      "id": "q2",
+      "question": "What is outstanding on PIN-MTR-552301?",
+      "gist": "Steel City Bodyshop needs written parts authority (mixed parts agreed; completion target Fri 20 Feb), and QuickFix Garage's GBP2,186.40 invoice awaits payment or authority, with storage charges from Friday. Two different garages on one claim is worth checking.",
+      "expected_refs": ["PIN-MTR-552301"],
+      "must_mention": ["authority", "invoice"],
+      "expect_refusal": false
+    },
+    {
+      "id": "q3",
+      "question": "Which threads involve a solicitor?",
+      "gist": "Morgan Rowe Solicitors (notice of claim for the CF10 cafe slip-and-fall), Caledonia Law (PIN-LIA-771045, chasing the indemnity position) and Taylor & Sons Solicitors (PIN-LIA-752388, data protection breach).",
+      "expected_refs": ["PIN-LIA-771045", "PIN-LIA-752388"],
+      "must_mention": ["Morgan Rowe", "Caledonia", "Taylor"],
+      "expect_refusal": false
+    },
+    {
+      "id": "q4",
+      "question": "Are there any new claims (FNOL) that haven't been acknowledged?",
+      "gist": "Yes, none of these has a reply from Pinnacle: flooded Kia Sportage (Morecambe), stolen van with tools (NE6), kitchen fire (Headingley), storm-damaged listed cottage roof (Skye), and the CF10 cafe slip-and-fall.",
+      "expected_refs": [],
+      "must_mention": ["Kia", "van", "fire"],
+      "expect_refusal": false
+    },
+    {
+      "id": "q5",
+      "question": "Did anyone raise a fraud concern?",
+      "gist": "Yes: the Fraud Team chased the status of PIN-MTR-590234 (telematics anomaly, claim on hold, recorded interview), and the anti-fraud team circulated a list of high-risk repairers and hire firms.",
+      "expected_refs": ["PIN-MTR-590234"],
+      "must_mention": ["telematics"],
+      "expect_refusal": false
+    },
+    {
+      "id": "q6",
+      "question": "What internal notices affect how I work this month?",
+      "gist": "Supplier payment runs move from Wednesdays to Tuesdays; Guidewire outage Saturday 22:00-02:00; extra checks on high-risk repairers and hire firms; flood excess waiver withdrawn in Cumbria high-risk bands; updated Scottish PI pre-action protocols; amber wind warning (FNOL surge).",
+      "expected_refs": [],
+      "must_mention": ["Tuesday", "Guidewire"],
+      "expect_refusal": false
+    },
+    {
+      "id": "q7",
+      "question": "Is there anything about a flooded vehicle?",
+      "gist": "Yes: James Turner's 2018 Kia Sportage was flooded by the tidal surge in Morecambe (FNOL 3 Feb); he needs recovery and a hire car, and asks about total loss. No reply yet.",
+      "expected_refs": [],
+      "must_mention": ["Kia", "Morecambe"],
+      "expect_refusal": false
+    },
+    {
+      "id": "q8",
+      "question": "What did Harper Broking ask us to do?",
+      "gist": "Sam Ramsey (Harper Broking, now Harper & Vale Insurance) asked for the underpinning mobilisation date, permit status and tenant decant arrangements on PIN-HOM-419876, and chased on 10 and 11 Feb.",
+      "expected_refs": ["PIN-HOM-419876"],
+      "must_mention": ["decant", "Harper & Vale"],
+      "expect_refusal": false
+    },
+    {
+      "id": "q9",
+      "question": "What did Zenith Brokers ask us to do?",
+      "gist": "Nothing in the mailbox mentions Zenith Brokers: the system should say so, not guess.",
+      "expected_refs": [],
+      "must_mention": [],
+      "expect_refusal": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# Secrets
+.env
+
+# Generated data (rebuilt by the pipeline)
+*.db
+
+# Dependencies and build output
+node_modules/
+dist/
+__pycache__/
+.venv/
+.pytest_cache/
+
