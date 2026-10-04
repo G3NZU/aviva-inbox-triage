@@ -1,20 +1,35 @@
 // Typed fetch helpers: one per backend endpoint. The API base URL defaults to the local uvicorn server.
-import type { Filters, QAAnswer, RunSummary, Summary, ThreadDetail, ThreadRow } from "./types";
+import type { QAAnswer, RunSummary, Summary, ThreadDetail, ThreadRow } from "./types";
 
 const API_BASE: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
-/** Fetch JSON from the API; throw an Error carrying the API's `detail` message when the call fails. */
+/**
+ * A failed API call. `kind` says what went wrong in plain terms (the API could not be reached, or it
+ * answered with an error); `message` keeps the technical detail from the API for the curious.
+ */
+export class ApiError extends Error {
+  kind: "network" | "http";
+  status: number | null;
+
+  constructor(kind: "network" | "http", message: string, status: number | null = null) {
+    super(message);
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
+/** Fetch JSON from the API; throw an ApiError carrying the API's `detail` message when the call fails. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, init);
   } catch {
-    throw new Error(`Cannot reach the API at ${API_BASE}. Is uvicorn running?`);
+    throw new ApiError("network", `Cannot reach the API at ${API_BASE}.`);
   }
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
     const detail = typeof body?.detail === "string" ? body.detail : `HTTP ${response.status}`;
-    throw new Error(detail);
+    throw new ApiError("http", detail, response.status);
   }
   return (await response.json()) as T;
 }
@@ -24,13 +39,9 @@ export function getSummary(): Promise<Summary> {
   return request<Summary>("/summary");
 }
 
-/** GET /threads — the workload list, filtered on the server, sorted P1 → P4 then oldest first. */
-export function getThreads(filters: Filters): Promise<ThreadRow[]> {
-  const params = new URLSearchParams();
-  for (const [name, value] of Object.entries(filters)) {
-    if (value) params.set(name, value);
-  }
-  return request<ThreadRow[]>(`/threads?${params.toString()}`);
+/** GET /threads — every thread, sorted P1 → P4 then oldest first (the page filters them itself). */
+export function getThreads(): Promise<ThreadRow[]> {
+  return request<ThreadRow[]>("/threads");
 }
 
 /** GET /threads/{key} — one thread with its messages, triage, priority and audit trail. */
@@ -47,7 +58,7 @@ export function ask(question: string): Promise<QAAnswer> {
   });
 }
 
-/** POST /run — re-run the pipeline; `force` re-triages every thread (slow, costs tokens). */
+/** POST /run — re-run the pipeline; `force` re-triages every thread (slow, uses paid API calls). */
 export function runPipeline(force: boolean): Promise<RunSummary> {
   return request<RunSummary>(`/run?force=${force}`, { method: "POST" });
 }

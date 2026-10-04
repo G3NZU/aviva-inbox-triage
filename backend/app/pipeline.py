@@ -1,6 +1,6 @@
 """Batch pipeline: ingest → triage → priority → store. Idempotent.
 
-Why: one entry point — this CLI, and later POST /run — brings the database up
+Why: one entry point — this CLI, and POST /run — brings the database up
 to date with the mailbox. A thread is re-triaged only when it is new, has a
 new latest message, was judged with another prompt version, or its last
 attempt failed; so re-running is cheap and nothing usable is paid for twice.

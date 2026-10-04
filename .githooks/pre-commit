@@ -1,0 +1,4 @@
+#!/bin/sh
+# Refuses a commit while the Markdown docs break the map in AGENTS.md.
+# Enabled per clone with:  git config core.hooksPath .githooks
+exec node scripts/docs-check.mjs --strict

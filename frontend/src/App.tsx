@@ -1,10 +1,49 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { getSummary } from "./api";
+import AppHeader from "./components/AppHeader";
+import type { Tab } from "./components/AppHeader";
+import { formatDayDate } from "./format";
 import Ask from "./pages/Ask";
 import Dashboard from "./pages/Dashboard";
 import ThreadView from "./pages/ThreadView";
+import type { Summary } from "./types";
 
-type Tab = "dashboard" | "ask";
-type View = { page: Tab } | { page: "thread"; key: string; focus?: string; from: Tab };
+/** Which screen is showing. A thread remembers where it was opened from, the list for Previous / Next, and the
+ *  cited message to land on when it came from an answer. */
+type View = { page: Tab } | { page: "thread"; key: string; focus?: string; from: Tab; queue?: string[] };
+
+/**
+ * Load GET /summary (counts, versions, as-of date, thresholds); `refresh` loads it again after a re-run.
+ * A failed reload keeps the last good summary; the error is returned for the workload to show.
+ */
+function useSummary(): { summary: Summary | null; error: Error | null; refresh: () => void } {
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const refresh = useCallback(() => {
+    setError(null);
+    getSummary().then(setSummary).catch((e: Error) => setError(e));
+  }, []);
+  useEffect(refresh, [refresh]);
+  return { summary, error, refresh };
+}
+
+/**
+ * After going back, put focus on the row or source that opened the thread, so keyboard users keep their place.
+ * If that row sits in a folded group, focus the group's Show button instead (a hidden row cannot take focus).
+ */
+function useReturnFocus(view: View): (id: string) => void {
+  const [target, setTarget] = useState<string | null>(null);
+  useEffect(() => {
+    if (target && view.page !== "thread") {
+      const row = document.getElementById(target);
+      const folded = row?.closest<HTMLElement>("[hidden]");
+      const showButton = folded && document.querySelector<HTMLElement>(`[aria-controls="${folded.id}"]`);
+      (showButton || row)?.focus();
+      setTarget(null);
+    }
+  }, [view, target]);
+  return setTarget;
+}
 
 /**
  * The app shell and its "router": a state switch between the workload, the Ask page and a thread.
@@ -12,33 +51,32 @@ type View = { page: Tab } | { page: "thread"; key: string; focus?: string; from:
  */
 export default function App() {
   const [view, setView] = useState<View>({ page: "dashboard" });
+  const { summary, error: summaryError, refresh } = useSummary();
+  const returnFocusTo = useReturnFocus(view);
   const tab: Tab = view.page === "thread" ? view.from : view.page;
-  const tabClass = (name: Tab) =>
-    `rounded-md px-3 py-1.5 text-sm font-medium ${tab === name ? "bg-white text-slate-900" : "text-slate-300 hover:text-white"}`;
+  const asOf = summary && <span className="tabular-nums">As of {formatDayDate(summary.as_of)}</span>;
+  const back = () => {
+    if (view.page !== "thread") return;
+    returnFocusTo(view.from === "dashboard" ? `open-${view.key}` : `source-${view.focus}`);
+    setView({ page: view.from });
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="bg-slate-900 text-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div>
-            <h1 className="text-lg font-semibold">Inbox triage</h1>
-            <p className="text-xs text-slate-400">Pinnacle Insurance claims inbox · recommendations only</p>
-          </div>
-          <nav className="flex gap-2">
-            <button className={tabClass("dashboard")} onClick={() => setView({ page: "dashboard" })}>Workload</button>
-            <button className={tabClass("ask")} onClick={() => setView({ page: "ask" })}>Ask the mailbox</button>
-          </nav>
+    <div className="min-h-screen">
+      <AppHeader tab={tab} onTab={(page) => setView({ page })} asOf={asOf} />
+      <main id="main" className="mx-auto max-w-page px-4 py-5 lg:px-6">
+        <div className={view.page === "dashboard" ? "animate-fade-in" : "hidden"}>
+          <Dashboard summary={summary} summaryError={summaryError} onRefresh={refresh}
+            onOpen={(key, queue) => setView({ page: "thread", key, from: "dashboard", queue })} />
         </div>
-      </header>
-      <main className="mx-auto max-w-7xl p-4">
-        <div className={view.page === "dashboard" ? "" : "hidden"}>
-          <Dashboard onOpen={(key) => setView({ page: "thread", key, from: "dashboard" })} />
-        </div>
-        <div className={view.page === "ask" ? "" : "hidden"}>
-          <Ask onOpen={(key, focus) => setView({ page: "thread", key, focus, from: "ask" })} />
+        <div className={view.page === "ask" ? "animate-fade-in" : "hidden"}>
+          <Ask total={summary?.total_threads ?? null}
+            onOpen={(key, focus) => setView({ page: "thread", key, focus, from: "ask" })} />
         </div>
         {view.page === "thread" && (
-          <ThreadView threadKey={view.key} focusMessageId={view.focus} onBack={() => setView({ page: view.from })} />
+          <ThreadView threadKey={view.key} focusMessageId={view.focus} queue={view.queue} facts={summary}
+            backLabel={view.from === "dashboard" ? "Back to workload" : "Back to answer"} onBack={back}
+            onGo={(key) => setView({ ...view, key })} />
         )}
       </main>
     </div>

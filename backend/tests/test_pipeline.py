@@ -1,6 +1,8 @@
 """Tests for pipeline idempotency: what is re-triaged, what is skipped, what is audited."""
 
 import json
+import sqlite3
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -88,6 +90,45 @@ def test_new_prompt_version_retriages_everything(setup: tuple[FakeTriage, Path, 
     pipeline.run_all(data_path=data, db_path=db)
     monkeypatch.setattr(config, "TRIAGE_PROMPT_VERSION", config.TRIAGE_PROMPT_VERSION + "_next")
     assert pipeline.run_all(data_path=data, db_path=db).triaged == 2
+
+
+def test_a_database_from_before_rules_v2_is_upgraded_without_retriage(setup: tuple[FakeTriage, Path, Path]) -> None:
+    fake, data, db = setup
+    pipeline.run_all(data_path=data, db_path=db)
+    conn = store.connect(db)
+    conn.execute("ALTER TABLE priority DROP COLUMN waiting_days")  # the table as rules_v1 created it
+    conn.commit()
+    conn.close()
+    summary = pipeline.run_all(data_path=data, db_path=db)
+    conn = store.connect(db)
+    waits = sorted(row["waiting_days"] for row in conn.execute("SELECT waiting_days FROM priority"))
+    conn.close()
+    assert summary.triaged == 0 and len(fake.calls) == 2  # nothing is paid for twice
+    assert waits == [14, 15]  # recomputed: Mon 2 Feb and Sun 1 Feb to Fri 20 Feb
+
+
+def test_requests_opening_an_old_database_at_once_all_succeed(tmp_path: Path) -> None:
+    db = tmp_path / "old.db"
+    conn = store.connect(db)
+    conn.execute("ALTER TABLE priority DROP COLUMN waiting_days")  # the table as rules_v1 created it
+    conn.commit()
+    conn.close()
+    start, errors = threading.Barrier(4), []
+
+    def open_database() -> None:
+        """Open the file as an API request would, all four at the same moment; record any error."""
+        start.wait()
+        try:
+            store.connect(db).close()
+        except sqlite3.Error as exc:
+            errors.append(exc)
+
+    workers = [threading.Thread(target=open_database) for _ in range(4)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+    assert errors == []
 
 
 def test_every_call_and_run_is_in_the_audit_log(setup: tuple[FakeTriage, Path, Path]) -> None:

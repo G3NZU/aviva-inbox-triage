@@ -72,6 +72,30 @@
       "expected_refs": [],
       "must_mention": [],
       "expect_refusal": true
+    },
+    {
+      "id": "q10",
+      "question": "Which is the most relevant thread to focus on?",
+      "gist": "The first three workload threads, in the rules' order: the Howards' formal complaint on PIN-HOM-501772 (the holding response promised for 3 Feb is 17 days overdue), James Turner's flooded Kia Sportage (a new claim, urgent make-safe, 13 working days waiting) and Caledonian Tree Services' report on PIN-HOM-547299 (urgent make-safe, 11 working days); then that 21 threads are P1. Unrelated matches are left out. The order comes from the rules, not the model.",
+      "expected_refs": ["PIN-HOM-501772", "PIN-HOM-547299"],
+      "must_mention": ["complaint", "Kia", "21"],
+      "expect_refusal": false
+    },
+    {
+      "id": "q11",
+      "question": "Who has been waiting longest for a reply from us?",
+      "gist": "Bridgegate Brokers on PIN-HOM-533661 and the windscreen-chip policy query, both 14 working days, then the flooded Kia FNOL and the buy-to-let malicious-damage query (13). Waiting days are counted by the rules from the latest outside email.",
+      "expected_refs": ["PIN-HOM-533661"],
+      "must_mention": ["Bridgegate", "14"],
+      "expect_refusal": false
+    },
+    {
+      "id": "q12",
+      "question": "tell me the most relevant thread to focus on",
+      "gist": "As q10, asked as a request: the first three workload threads in the rules' order (the PIN-HOM-501772 complaint, the flooded Kia, the PIN-HOM-547299 tree report), one line each, then that 21 threads are P1.",
+      "expected_refs": ["PIN-HOM-501772", "PIN-HOM-547299"],
+      "must_mention": ["complaint", "Kia", "21"],
+      "expect_refusal": false
     }
   ]
 }

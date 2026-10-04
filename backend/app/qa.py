@@ -1,12 +1,14 @@
 """Free-text questions over the mailbox: transparent retrieval, then a cited answer from Claude Sonnet.
 
-Why: handlers ask things like "Was there any action required for Broker X?".
+Why: handlers ask things like "Was there any action required for Broker X?" or "What should I do first?".
 `retrieve` picks threads with scoring a person can follow — an exact claim
-reference beats a company named in a sender's domain, which beats a type the
+reference beats a company named in a domain on the thread, which beats a type the
 triage assigned (solicitor, FNOL, fraud…), which beats shared rare words — and
-says why each thread matched (no embeddings, D-03). `answer` lets
-Sonnet answer only from those threads, citing messages by neutral handles
-(M1, M2…; message IDs leak labels, D-07). No valid citation, no answer (D-29).
+says why each thread matched (no embeddings, D-03). `answer` lets Sonnet answer
+only from those threads and the open workload (every thread that needs a person,
+in the rules' order, with the rules behind each priority: D-47), citing messages
+by neutral handles (M1, M2…; message IDs leak labels, D-07). No valid citation,
+no answer (D-29).
 """
 
 import math
@@ -18,12 +20,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app import config, llm, store
-from app.models import CLAIM_REF_PATTERN, Citation, Message, QAAnswer, RetrievedThread, Thread, TriageResult
+from app import config, llm, priority, store
+from app.models import CLAIM_REF_PATTERN, Message, PriorityResult, Thread, TriageResult
+from app.schemas import Citation, QAAnswer, RetrievedThread
 from app.triage import load_prompt
 
 CLAIM_REF_SCORE = 100.0  # an exact claim reference is the strongest evidence of relevance
-PARTY_SCORE = 20.0  # per question word found in an outside sender's company domain
+PARTY_SCORE = 20.0  # per question word naming a word of a company domain on the thread (sender or recipient)
 TAG_SCORE = 5.0  # per question word naming one of the thread's triage tags (sender type, signal)
 WORD = re.compile(r"[a-z0-9]+")
 STOPWORDS = frozenset(  # function words, question filler, and mailbox words every thread shares
@@ -80,10 +83,13 @@ def _score(thread: Thread, thread_words: set[str], thread_tags: set[str], idf: d
         score += CLAIM_REF_SCORE
         reasons.append(f"claim ref {ref}")
     for domain in _company_domains(thread):
-        matched = [w for w in party_words if w in domain.split(".")[0]]
+        # Whole words, not substrings: "city" must not match steelcity-bodyshop. A word of 5+ letters may
+        # also start a domain word, so "bridgegate" finds bridgegatebrokers, where the name runs into the trade.
+        names = [n for n in re.split(r"[-\d]+", domain.split(".")[0]) if n]
+        matched = [w for w in party_words if any(w == n or (len(w) >= 5 and n.startswith(w)) for n in names)]
         if matched:
             score += PARTY_SCORE * len(matched)
-            reasons.append(f"sender domain {domain} matches '{' '.join(matched)}'")
+            reasons.append(f"company domain {domain} matches '{' '.join(matched)}'")
     tagged = sorted(question_words & thread_tags)
     if tagged:
         score += TAG_SCORE * len(tagged)
@@ -144,28 +150,36 @@ def _company_domains(thread: Thread) -> list[str]:
 def answer(question: str, conn: sqlite3.Connection) -> QAAnswer:
     """Answer a handler's question from the mailbox, citing messages; refuse when there is no evidence.
 
-    Input: the question and an open database connection (threads, triage, audit log).
-    Output: QAAnswer. Every question, what was retrieved, the raw reply and the answer go to the audit log.
+    Input: the question and an open database connection (threads, triage, priorities, audit log).
+    Output: QAAnswer. The model always sees the open workload, so "what should I do first?" works even when
+    no email shares its words. The question, what the model was shown, its raw reply and the answer are audited.
     """
     started = time.perf_counter()
-    hits = retrieve(question, store.load_all_threads(conn), store.load_triage_results(conn), config.QA_TOP_K)
-    if hits:
-        result, audit = _ask_model(question, hits)
+    threads, triage = store.load_all_threads(conn), store.load_triage_results(conn)
+    priorities = store.load_priorities(conn)
+    hits, work = retrieve(question, threads, triage, config.QA_TOP_K), priority.open_work(threads, priorities)
+    if hits or work:
+        try:
+            result, audit = _ask_model(question, hits, *render_context(hits, work, triage, priorities))
+        except Exception as exc:  # no key, key rejected, API down: logged, then main.ask answers 502/503
+            store.log_event(conn, "ask_error", {"question": question, "error": f"{type(exc).__name__}: {exc}"})
+            conn.commit()
+            raise
     else:
         result, audit = _refusal("I can't find anything about that in the mailbox.", hits), {}
-    retrieved = [r.model_dump() for r in result.retrieved]
-    store.log_event(conn, "ask", {"question": question, "retrieved": retrieved, **audit,
+    store.log_event(conn, "ask", {"question": question, "retrieved": [r.model_dump() for r in result.retrieved],
+                                  "workload": [t.key for t in work], **audit,
                                   "answer": result.model_dump(mode="json", exclude={"retrieved"}),
                                   "seconds": round(time.perf_counter() - started, 1)})
     conn.commit()
     return result
 
 
-def _ask_model(question: str, hits: list[Hit]) -> tuple[QAAnswer, dict[str, Any]]:
-    """Ask Sonnet over the retrieved threads; map its handles to real messages; enforce "no citation, no answer"."""
-    context, handles = render_context(hits)
+def _ask_model(question: str, hits: list[Hit], context: str,
+               handles: dict[str, tuple[Thread, Message]]) -> tuple[QAAnswer, dict[str, Any]]:
+    """Ask Sonnet over the evidence; map its handles to real messages; enforce "no citation, no answer"."""
     user = (f"Today is {config.AS_OF_DATE:%A %d %B %Y} (the date of the newest email).\n\n"
-            f"<question>\n{question}\n</question>\n\n<mailbox_extract>\n{context}\n</mailbox_extract>")
+            f"<question>\n{question}\n</question>\n\n{context}")
     try:
         reply = llm.call_json(config.QA_MODEL, load_prompt(config.QA_PROMPT_VERSION), user,
                               max_tokens=config.QA_MAX_TOKENS, schema=QAReply, **config.QA_OPTIONS)
@@ -173,7 +187,8 @@ def _ask_model(question: str, hits: list[Hit]) -> tuple[QAAnswer, dict[str, Any]
         return _refusal(f"No reliable answer: {exc}.", hits), {"error": str(exc), "raw_response": exc.raw_text}
     parsed = QAReply.model_validate(reply.data)
     cited = [handles[h] for h in dict.fromkeys(c.strip("[] ") for c in parsed.citations) if h in handles]
-    citations = [Citation(thread_key=t.key, message_id=m.message_id, subject=m.subject) for t, m in cited]
+    citations = [Citation(thread_key=t.key, message_id=m.message_id, subject=m.subject, sent_from=m.sent_from,
+                          date_sent=m.date_sent) for t, m in cited]
     if parsed.refused or citations:
         result = QAAnswer(answer=parsed.answer, citations=citations, confidence=parsed.confidence,
                           refused=parsed.refused, retrieved=_retrieved(hits))
@@ -185,26 +200,50 @@ def _ask_model(question: str, hits: list[Hit]) -> tuple[QAAnswer, dict[str, Any]
     return result, audit
 
 
-def render_context(hits: list[Hit]) -> tuple[str, dict[str, tuple[Thread, Message]]]:
-    """The retrieved threads as text for the model, each message labelled [M1], [M2]… (no internal IDs).
-
-    Output: (text, handle → (thread, message)) so cited handles can be mapped back.
-    """
+def render_context(hits: list[Hit], work: list[Thread], triage: dict[str, TriageResult],
+                   priorities: dict[str, PriorityResult]) -> tuple[str, dict[str, tuple[Thread, Message]]]:
+    """The model's evidence: the open workload, one line per thread in the rules' order, then the matched
+    threads' emails. Each email gets a neutral handle ([M1], [M2]…; no internal IDs); a workload line carries
+    its thread's latest. Output: (text, handle → (thread, message)), so cited handles can be mapped back."""
     handles: dict[str, tuple[Thread, Message]] = {}
-    blocks = []
-    for number, hit in enumerate(hits, start=1):
-        lines = [f"<thread>\nThread {number}: {hit.thread.subject}"]
-        for m in hit.thread.messages:
-            handle = f"M{len(handles) + 1}"
-            handles[handle] = (hit.thread, m)
-            sender = f"{m.sent_from}{' (internal)' if m.from_internal else ''}"
-            lines.append(f"[{handle}] {m.date_sent:%a %Y-%m-%d %H:%M} | From: {sender} | To: {', '.join(m.sent_to)} "
-                         f"| Subject: {m.subject}")
-            if m.attachments:
-                lines.append("Attachments: " + ", ".join(a.filename for a in m.attachments))
-            lines.append(m.body.strip())
-        blocks.append("\n".join([*lines, "</thread>"]))
-    return "\n\n".join(blocks), handles
+    blocks = [_thread_block(n, h.thread, triage, priorities, handles) for n, h in enumerate(hits, start=1)]
+    lines = [_workload_line(t, triage.get(t.key), priorities.get(t.key), _handle(handles, t, t.current))
+             for t in work]
+    workload = "\n".join([priority.workload_header(work, priorities), *lines]) if work else "(no open threads)"
+    extract = "\n\n".join(blocks) or "(no thread shares words with the question)"
+    return f"<workload>\n{workload}\n</workload>\n\n<mailbox_extract>\n{extract}\n</mailbox_extract>", handles
+
+
+def _thread_block(number: int, thread: Thread, triage: dict[str, TriageResult],
+                  priorities: dict[str, PriorityResult], handles: dict[str, tuple[Thread, Message]]) -> str:
+    """One matched thread for the model: its subject, the rules' verdict, then every email under its handle."""
+    lines = [f"<thread>\nThread {number}: {thread.subject}",
+             f"Priority: {priority.verdict_line(priorities.get(thread.key), triage.get(thread.key))}"]
+    for m in thread.messages:
+        sender = f"{m.sent_from}{' (internal)' if m.from_internal else ''}"
+        lines.append(f"[{_handle(handles, thread, m)}] {m.date_sent:%a %Y-%m-%d %H:%M} | From: {sender} "
+                     f"| To: {', '.join(m.sent_to)} | Subject: {m.subject}")
+        if m.attachments:
+            lines.append("Attachments: " + ", ".join(a.filename for a in m.attachments))
+        lines.append(m.body.strip())
+    return "\n".join([*lines, "</thread>"])
+
+
+def _workload_line(thread: Thread, triage: TriageResult | None, prio: PriorityResult | None, handle: str) -> str:
+    """One open thread as the workload lists it: claim, line of business, who waits, subject, the rules' verdict."""
+    claim = thread.claim_refs[0] if thread.claim_refs else (triage and triage.claim_ref) or "no claim ref"
+    sender = next((m.sent_from for m in reversed(thread.messages) if not m.from_internal), thread.current.sent_from)
+    line = triage.line_of_business if triage else "unknown"
+    return f"[{handle}] {claim} | {line} | from {sender} | {thread.subject} | {priority.verdict_line(prio, triage)}"
+
+
+def _handle(handles: dict[str, tuple[Thread, Message]], thread: Thread, message: Message) -> str:
+    """The message's handle (M1, M2…): the one it already has, or the next free one."""
+    for handle, (_, known) in handles.items():
+        if known.message_id == message.message_id:
+            return handle
+    handles[f"M{len(handles) + 1}"] = (thread, message)
+    return f"M{len(handles)}"
 
 
 def _retrieved(hits: list[Hit]) -> list[RetrievedThread]:

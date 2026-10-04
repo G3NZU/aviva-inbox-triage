@@ -1,1 +1,158 @@
 @import "tailwindcss";
+
+/*
+ * Design tokens: every type size, weight, colour, easing and animation the UI uses, defined once.
+ * Tailwind turns each into utilities (--text-sm -> text-sm; --color-ink -> text-ink, bg-ink;
+ * --ease-enter -> ease-enter; --animate-enter -> animate-enter). Colours are fixed hex values, not
+ * Tailwind's palette, so the contrast ratios noted here stay true. Ratios are against white unless stated.
+ */
+@theme {
+  /* Type: five sizes and two weights, one font (the system's). Tailwind's own scales are cleared, so no
+     other size or weight exists. */
+  --text-*: initial;
+  --text-xs: 0.75rem; /* 12px: dates, tags, column labels, small print */
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem; /* 14px: the interface: rows, panels, buttons */
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem; /* 16px: reading text: the next step, answers, emails */
+  --text-base--line-height: 1.5rem;
+  --text-xl: 1.25rem; /* 20px: page and thread titles */
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem; /* 24px: the counts on the cards */
+  --text-2xl--line-height: 2rem;
+  --font-weight-*: initial;
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600; /* headings, labels, buttons: the only emphasis */
+
+  --container-page: 96rem; /* the widest the page grows (1536px), header and content alike */
+
+  /* Neutrals: page, panels, dividers, text. */
+  --color-canvas: #f8fafc; /* page background */
+  --color-surface: #ffffff; /* header, cards, panels, emails */
+  --color-sunken: #f1f5f9; /* row hover, column labels, code */
+  --color-line: #e2e8f0; /* dividers: decorative, never the only cue */
+  --color-line-strong: #64748b; /* input borders, 4.76:1 */
+  --color-ink: #0f172a; /* body text, 17.85:1 */
+  --color-ink-2: #475569; /* secondary text, 7.58:1 */
+  --color-ink-3: #5b6b80; /* muted text, 5.44:1 (4.97:1 on sunken) */
+
+  /* One accent, for interaction only (links, focus, selection, the Ask button); never a status. */
+  --color-accent: #1d4ed8; /* 6.70:1; white on it 6.70:1 */
+  --color-accent-strong: #1e40af; /* hover, selected text, 8.72:1 */
+  --color-accent-soft: #eff6ff; /* selected fill */
+  --color-on-accent: #ffffff; /* text on accent fills: 6.70:1 on accent, 8.72:1 on accent-strong, 5.44:1 on ink-3 */
+
+  /* The header band: the one block of colour on every screen. Its controls use a white focus outline. */
+  --color-header: #1e40af; /* band */
+  --color-header-ink: #ffffff; /* title, current tab, focus outline: 8.72:1 on header */
+  --color-header-ink-2: #dbeafe; /* promise, date, other tabs: 7.15:1 on header */
+
+  /* Priority states: fg on bg >= 6.8:1; bg = chip fill and section-header tint (ink-2 on it >= 6.91:1),
+     line = chip border, mark = icons and the coloured edges of cards, section headers and the decision band.
+     Hue is never the only cue: each state also has its own words and icon shape (see PriorityBadge). */
+  --color-p1-bg: #fef2f2;
+  --color-p1-fg: #991b1b; /* 7.60:1 on p1-bg */
+  --color-p1-line: #fecaca;
+  --color-p1-mark: #b91c1c; /* 6.47:1 */
+  --color-p2-bg: #fffbeb;
+  --color-p2-fg: #92400e; /* 6.84:1 on p2-bg */
+  --color-p2-line: #fde68a;
+  --color-p2-mark: #b45309; /* 5.02:1 */
+  --color-review-bg: #f5f3ff;
+  --color-review-fg: #5b21b6; /* 8.19:1 on review-bg */
+  --color-review-line: #7c3aed; /* dashed border: part of the encoding, 5.70:1 */
+  --color-review-mark: #6d28d9;
+  --color-p3-bg: #f0fdfa;
+  --color-p3-fg: #115e59; /* 7.27:1 on p3-bg */
+  --color-p3-line: #99f6e4;
+  --color-p3-mark: #0f766e; /* 5.47:1 */
+  --color-p4-bg: #f1f5f9;
+  --color-p4-fg: #334155; /* 9.45:1 on p4-bg */
+  --color-p4-line: #cbd5e1;
+  --color-p4-mark: #64748b; /* 4.76:1 */
+  --color-ignore-fg: #5b6b80; /* 5.44:1 */
+  --color-ignore-mark: #94a3b8; /* decorative only */
+
+  /* Motion (IBM Carbon "productive" curves): standard for changes, enter for things appearing. */
+  --ease-standard: cubic-bezier(0.2, 0, 0.38, 0.9);
+  --ease-enter: cubic-bezier(0, 0, 0.38, 0.9);
+  --animate-enter: enter 200ms var(--ease-enter) both;
+  --animate-fade-in: fade-in 150ms var(--ease-enter) both;
+  --animate-tip-in: tip-in 150ms var(--ease-enter) both;
+  --animate-flash: flash 1000ms ease-out both;
+
+  @keyframes enter {
+    from { opacity: 0; translate: 0 6px; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+  }
+  @keyframes tip-in {
+    from { opacity: 0; translate: 0 4px; }
+  }
+  @keyframes flash {
+    from { background-color: var(--color-accent-soft); }
+  }
+}
+
+/* Dark theme: the same tokens with dark values on <html data-theme="dark">. index.html sets data-theme before
+   the first paint (the saved choice, else the system setting); the header's "Dark mode" toggle flips it.
+   Ratios are against the dark surface unless stated; the lowest text pair is ink-3 on sunken, 6.28:1. Header
+   inks stay as above. Text on an ink fill uses text-surface, so it flips with the theme. */
+:root[data-theme="dark"] {
+  color-scheme: dark; /* native controls (the dropdown, scrollbars) too */
+  --color-canvas: #0b1120;
+  --color-surface: #131c2e;
+  --color-sunken: #1b263a;
+  --color-line: #2b3a52;
+  --color-line-strong: #7d8ca3; /* 4.99:1 */
+  --color-ink: #e8edf4; /* 14.47:1 */
+  --color-ink-2: #b4c0d0; /* 9.24:1, at least 7.80:1 on every tint */
+  --color-ink-3: #9aa8bb; /* 7.05:1 (6.28:1 on sunken) */
+  --color-accent: #8ab4ff; /* 8.15:1; on-accent on it 9.01:1 */
+  --color-accent-strong: #b6d0ff; /* 10.91:1 */
+  --color-accent-soft: #1a2b4f; /* ink on it 11.88:1 */
+  --color-on-accent: #0b1120; /* dark text on the light accent; 7.79:1 on ink-3 */
+  --color-header: #1e3a8a; /* white 10.36:1, header-ink-2 8.49:1 */
+  --color-p1-bg: #3b1518;
+  --color-p1-fg: #fecaca; /* 11.11:1 on p1-bg */
+  --color-p1-line: #7f1d1d;
+  --color-p1-mark: #f87171; /* 6.16:1; 5.81:1 on p1-bg */
+  --color-p2-bg: #352309;
+  --color-p2-fg: #fde68a; /* 12.08:1 on p2-bg */
+  --color-p2-line: #78350f;
+  --color-p2-mark: #fbbf24; /* 10.20:1 */
+  --color-review-bg: #2a1f4e;
+  --color-review-fg: #ddd6fe; /* 10.77:1 on review-bg */
+  --color-review-line: #a78bfa; /* 6.26:1 */
+  --color-review-mark: #a78bfa; /* 5.49:1 on review-bg */
+  --color-p3-bg: #0d2f2c;
+  --color-p3-fg: #99f6e4; /* 11.41:1 on p3-bg */
+  --color-p3-line: #115e59;
+  --color-p3-mark: #2dd4bf; /* 9.15:1 */
+  --color-p4-bg: #1e293b;
+  --color-p4-fg: #cbd5e1; /* 9.85:1 on p4-bg */
+  --color-p4-line: #475569;
+  --color-p4-mark: #94a3b8; /* 6.64:1 */
+  --color-ignore-fg: #9aa8bb; /* 7.05:1 */
+  --color-ignore-mark: #64748b; /* decorative only */
+}
+
+@layer base {
+  /* Native controls (the dropdown, scrollbars) are light unless the dark theme is on (above). */
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+  }
+
+  /* One focus style for every control: a 2px accent outline (WCAG 2.4.7). Never removed. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+

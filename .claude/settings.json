@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/scripts/docs-check.mjs\" --hook=session-start",
+            "timeout": 20,
+            "statusMessage": "Checking the docs against their caps"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/scripts/docs-check.mjs\" --hook=post-edit",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/scripts/docs-check.mjs\" --hook=stop",
+            "timeout": 20,
+            "statusMessage": "Checking the docs before stopping"
+          }
+        ]
+      }
+    ]
+  }
+}

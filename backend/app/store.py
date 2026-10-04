@@ -61,12 +61,13 @@ CREATE TABLE IF NOT EXISTS priority (   -- the rules' verdict per thread, recomp
     explanation     TEXT NOT NULL,
     rules_version   TEXT NOT NULL,      -- config.PRIORITY_RULES_VERSION
     as_of           TEXT NOT NULL,      -- the "today" the rules used
-    computed_at     TEXT NOT NULL
+    computed_at     TEXT NOT NULL,
+    waiting_days    INTEGER NOT NULL    -- working days the latest outside sender has waited; 0 if we wrote last
 );
 CREATE TABLE IF NOT EXISTS audit_log (  -- append-only: never updated or deleted
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at      TEXT NOT NULL,
-    event           TEXT NOT NULL,      -- triage | triage_error | pipeline_run | ask
+    event           TEXT NOT NULL,      -- triage | triage_error | pipeline_run | ask | ask_error
     thread_key      TEXT,
     detail          TEXT NOT NULL       -- JSON
 );
@@ -74,7 +75,7 @@ CREATE TABLE IF NOT EXISTS audit_log (  -- append-only: never updated or deleted
 
 
 def connect(path: Path | None = None) -> sqlite3.Connection:
-    """Open the database (default config.DB_PATH, read at call time), creating tables if needed.
+    """Open the database (default config.DB_PATH, read at call time), creating tables and columns if needed.
 
     check_same_thread=False lets the API open a connection in one worker
     thread and use it in another; each request still gets its own connection.
@@ -83,7 +84,24 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    _add_missing_columns(conn)
     return conn
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    """Bring a database file made by an earlier version up to the current schema.
+
+    Why: `priority.waiting_days` arrived with rules_v2, and CREATE TABLE IF NOT EXISTS leaves an
+    existing table as it was. The triage results in that file were paid for, so the column is
+    added in place rather than rebuilding the file; the next pipeline run fills it in.
+    It always tries the ALTER and ignores "duplicate column": checking first and then altering
+    would race when several API requests open an old file at the same moment.
+    """
+    try:
+        conn.execute("ALTER TABLE priority ADD COLUMN waiting_days INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column name" not in str(exc):
+            raise
 
 
 def save_threads(conn: sqlite3.Connection, threads: list[Thread]) -> None:
@@ -137,15 +155,17 @@ def load_triage_results(conn: sqlite3.Connection) -> dict[str, TriageResult]:
 def save_priority(conn: sqlite3.Connection, thread_key: str, priority: PriorityResult, as_of: date) -> None:
     """Store the rules' verdict for a thread, with the rules version and as-of date that reproduce it."""
     conn.execute(
-        "INSERT OR REPLACE INTO priority VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        """INSERT OR REPLACE INTO priority (thread_key, level, bucket, rules_fired, explanation, rules_version,
+               as_of, computed_at, waiting_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (thread_key, priority.level, priority.bucket, json.dumps(priority.rules_fired), priority.explanation,
-         config.PRIORITY_RULES_VERSION, as_of.isoformat(), now_iso()),
+         config.PRIORITY_RULES_VERSION, as_of.isoformat(), now_iso(), priority.waiting_days),
     )
 
 
 # `sender` is the latest outside sender (the party waiting on us); Pinnacle's own only if nobody else wrote.
 THREAD_ROWS_SQL = """
 SELECT th.*, t.result, p.level, p.bucket, p.explanation, p.rules_fired,
+       COALESCE(p.waiting_days, 0) AS waiting_days,
        COALESCE((SELECT sent_from FROM messages m WHERE m.thread_key = th.key AND lower(m.sent_from) NOT LIKE ?
                  ORDER BY position DESC LIMIT 1),
                 (SELECT sent_from FROM messages m WHERE m.thread_key = th.key ORDER BY position DESC LIMIT 1)) AS sender
@@ -161,6 +181,19 @@ def load_thread_rows(conn: sqlite3.Connection, key: str | None = None) -> list[s
     if key is None:
         return conn.execute(THREAD_ROWS_SQL, (internal,)).fetchall()
     return conn.execute(THREAD_ROWS_SQL + " WHERE th.key = ?", (internal, key)).fetchall()
+
+
+def priority_result(row: sqlite3.Row) -> PriorityResult | None:
+    """A row's stored priority (columns level, bucket, rules_fired, explanation, waiting_days); None if never set."""
+    return None if row["bucket"] is None else PriorityResult(
+        level=row["level"], bucket=row["bucket"], rules_fired=json.loads(row["rules_fired"]),
+        explanation=row["explanation"], waiting_days=row["waiting_days"])
+
+
+def load_priorities(conn: sqlite3.Connection) -> dict[str, PriorityResult]:
+    """Every stored priority, by thread key (Q&A shows the model the open work and why it is ranked so)."""
+    rows = conn.execute("SELECT thread_key, level, bucket, rules_fired, explanation, waiting_days FROM priority")
+    return {row["thread_key"]: result for row in rows if (result := priority_result(row))}
 
 
 def load_messages(conn: sqlite3.Connection, key: str) -> list[Message]:
@@ -201,12 +234,14 @@ def load_audit(conn: sqlite3.Connection, key: str) -> list[sqlite3.Row]:
     return conn.execute("SELECT * FROM audit_log WHERE thread_key = ? ORDER BY id", (key,)).fetchall()
 
 
-def run_facts(conn: sqlite3.Connection) -> tuple[str | None, list[str], list[str]]:
-    """When the pipeline last ran, and the models and prompt versions behind the stored triage."""
+def run_facts(conn: sqlite3.Connection) -> tuple[str | None, list[str], list[str], list[str]]:
+    """When the pipeline last ran; the models and prompt versions behind the stored triage; the rules
+    versions behind the stored priorities (read from the rows, so an older file shows what produced it)."""
     last = conn.execute("SELECT max(created_at) FROM audit_log WHERE event = 'pipeline_run'").fetchone()[0]
     models = [r[0] for r in conn.execute("SELECT DISTINCT model FROM triage ORDER BY model")]
     versions = [r[0] for r in conn.execute("SELECT DISTINCT prompt_version FROM triage ORDER BY prompt_version")]
-    return last, models, versions
+    rules = [r[0] for r in conn.execute("SELECT DISTINCT rules_version FROM priority ORDER BY rules_version")]
+    return last, models, versions, rules
 
 
 def log_event(conn: sqlite3.Connection, event: str, detail: dict[str, Any], thread_key: str | None = None) -> None:

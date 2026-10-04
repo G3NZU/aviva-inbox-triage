@@ -1,51 +1,62 @@
-import type { Filters, Summary } from "../types";
+import { CARD, PARTIAL_EMPTY } from "../labels";
+import type { Card } from "../types";
+import Icon from "./Icon";
+import { CARD_ICON, EDGE, MARK } from "./PriorityBadge";
 
-interface Card {
-  id: string; // key in Summary.counts
-  title: string;
-  hint: string;
-  filters: Filters; // what clicking the card shows
-  colour: string;
-}
-
-const CARDS: Card[] = [
-  { id: "P1", title: "P1", hint: "act today", filters: { bucket: "act", level: "P1" }, colour: "border-red-500" },
-  { id: "P2", title: "P2", hint: "this week", filters: { bucket: "act", level: "P2" }, colour: "border-amber-500" },
-  { id: "P3", title: "P3", hint: "normal", filters: { bucket: "act", level: "P3" }, colour: "border-sky-600" },
-  { id: "review", title: "Review", hint: "model unsure: a human checks", filters: { bucket: "review" }, colour: "border-violet-600" },
-  { id: "archive", title: "P4 · Archive", hint: "informational, no action", filters: { bucket: "archive" }, colour: "border-slate-400" },
-  { id: "ignore", title: "Ignore", hint: "not claims work", filters: { bucket: "ignore" }, colour: "border-slate-200" },
+const GROUPS: { label: string; cards: Card[]; grid: string }[] = [
+  { label: "Needs action", cards: ["P1", "P2", "review", "P3"], grid: "grid-cols-2 sm:grid-cols-4" },
+  { label: "No action", cards: ["archive", "ignore"], grid: "grid-cols-2" },
 ];
 
-/** True when two filter sets select the same threads. */
-function sameFilters(a: Filters, b: Filters): boolean {
-  return a.bucket === b.bucket && a.level === b.level && a.lob === b.lob;
+/**
+ * One count card: a toggle button (aria-pressed); its name stays the same whether pressed or not. Its left edge
+ * has its section header's colour, so the cards double as the list's legend.
+ */
+function CountCard({ card, count, selected, partial, onSelect }: {
+  card: Card; count: number; selected: boolean; partial: boolean; onSelect: (card: Card | null) => void;
+}) {
+  const words = CARD[card];
+  const tone = count === 0 ? "text-ink-3" : card === "P1" ? "text-p1-mark" : "text-ink";
+  return (
+    <button type="button" aria-pressed={selected} onClick={() => onSelect(selected ? null : card)}
+      className={`group flex flex-col rounded-lg border-2 border-l-4 border-line ${EDGE[card]} bg-surface px-3 py-2
+        text-left shadow-xs transition-[translate,box-shadow,border-color,background-color] duration-150
+        ease-standard hover:shadow-md motion-safe:hover:-translate-y-0.5 active:translate-y-0
+        aria-pressed:border-accent aria-pressed:bg-accent-soft`}>
+      <span className="flex items-center gap-2">
+        <Icon name={CARD_ICON[card]} className={`size-4 shrink-0 ${MARK[card]} group-aria-pressed:hidden`} />
+        <Icon name="check" className="hidden size-4 shrink-0 text-accent group-aria-pressed:block" />
+        <span className="flex-1 text-sm font-semibold">{words.label}</span>
+        <span key={count} className={`animate-fade-in text-2xl font-semibold tabular-nums ${tone}`}>{count}</span>
+      </span>
+      <span className="text-xs text-ink-2">{count > 0 ? words.hint : partial ? PARTIAL_EMPTY : words.zeroHint}</span>
+    </button>
+  );
 }
 
-/** The workload at a glance: one card per priority level or bucket; clicking a card filters the list. */
-export default function SummaryCards({ summary, active, onSelect }: {
-  summary: Summary;
-  active: Filters;
-  onSelect: (filters: Filters) => void;
+/**
+ * The workload at a glance and the only priority filter: one card per group, in the list's order, split
+ * into "Needs action" and "No action". Clicking a card shows only that group; clicking it again shows all.
+ * Props: the stored counts from GET /summary, the chosen card and a setter, and whether some threads are still
+ * unread (then a zero is not "none", only "none so far"). What each group means is listed under About this data.
+ */
+export default function SummaryCards({ counts, chosen, partial, onSelect }: {
+  counts: Record<string, number>; chosen: Card | null; partial: boolean; onSelect: (card: Card | null) => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-      {CARDS.map((card) => {
-        const selected = sameFilters(active, card.filters);
-        return (
-          <button
-            key={card.id}
-            onClick={() => onSelect(selected ? {} : card.filters)}
-            className={`rounded-lg border-l-4 bg-white p-3 text-left shadow-sm hover:shadow ${card.colour} ${
-              selected ? "ring-2 ring-slate-900" : ""
-            }`}
-          >
-            <div className="text-2xl font-bold">{summary.counts[card.id] ?? 0}</div>
-            <div className="text-sm font-semibold">{card.title}</div>
-            <div className="text-xs text-slate-500">{card.hint}</div>
-          </button>
-        );
-      })}
+    <div className="flex flex-wrap gap-x-8 gap-y-3">
+      {GROUPS.map((group, i) => (
+        <section key={group.label} aria-label={group.label}
+          className={i === 0 ? "basis-full lg:basis-0 lg:grow-[4]" : "basis-full sm:basis-1/2 lg:basis-0 lg:grow-[2]"}>
+          <h2 className="mb-1.5 text-xs font-semibold text-ink-2">{group.label}</h2>
+          <div className={`grid gap-3 ${group.grid}`}>
+            {group.cards.map((card) => (
+              <CountCard key={card} card={card} count={counts[card] ?? 0} selected={chosen === card} partial={partial}
+                onSelect={onSelect} />
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

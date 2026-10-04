@@ -82,6 +82,16 @@ def test_schema_error_twice_falls_back(threads: list[Thread], fake_llm: Callable
     assert "urgency: missing" in (record.error or "") and len(client.requests) == 2
 
 
+def test_reply_cut_off_at_max_tokens_twice_falls_back_naming_the_cause(
+        threads: list[Thread], fake_llm: Callable[..., FakeClient]) -> None:
+    cut = json.dumps(VALID_TRIAGE)[:60]  # a reply that stopped mid-object
+    client = fake_llm(fake_response(cut, stop_reason="max_tokens"), fake_response(cut, stop_reason="max_tokens"))
+    record = triage_thread(threads[0])
+    _assert_fallback(record.result)
+    assert "max_tokens" in (record.error or "") and len(client.requests) == 2
+    assert "cut off at max_tokens" in client.requests[1]["messages"][0]["content"]
+
+
 def test_refusal_falls_back(threads: list[Thread], fake_llm: Callable[..., FakeClient]) -> None:
     fake_llm(fake_response("", stop_reason="refusal"))
     record = triage_thread(threads[0])

@@ -3,7 +3,7 @@
 Usage (from backend/, after `python -m app.pipeline`):  python -m eval.run_eval [--qa]
 Every prompt version's triage is rebuilt from the audit log, so versions can be
 compared without calling the model again; priorities are recomputed with the
-current rules. --qa asks the Q&A questions afresh (Sonnet calls, ~$0.25); without
+current rules. --qa asks the Q&A questions afresh (12 Sonnet calls, ~$0.28); without
 it, the latest audited answers are re-scored. This module and one leak test are
 the only code that reads thread_id: here only to count how many golden labels
 differ from the seeds that the thread_id prefixes imply.
@@ -153,7 +153,8 @@ def latest_answers(questions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
 def qa_section(questions: list[dict[str, Any]], latest: dict[str, dict[str, Any]],
                refs_by_key: dict[str, list[str]]) -> list[str]:
     """Markdown for the Q&A results: a check row per question, then every answer in full."""
-    lines = ["## Q&A", "", f"Model {config.QA_MODEL}, prompt {config.QA_PROMPT_VERSION}, top {config.QA_TOP_K} "
+    prompts = ", ".join(sorted({d["prompt_version"] for d in latest.values() if d.get("prompt_version")})) or "none"
+    lines = ["## Q&A", "", f"Model {config.QA_MODEL}, prompt {prompts}, top {config.QA_TOP_K} "
              "threads. Refusal: refused exactly when expected. Refs: expected claim refs among the cited threads. "
              "Words: must-mention words found in the answer. Retrieval settings were tuned on these questions.", "",
              "| # | Question | Refusal | Refs | Words | Seconds |", "|---|---|---|---|---|---|"]

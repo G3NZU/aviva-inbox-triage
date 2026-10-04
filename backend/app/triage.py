@@ -31,8 +31,8 @@ def triage_thread(thread: Thread, prompt_version: str | None = None) -> TriageRe
     """Classify one thread with the triage model.
 
     Input: a Thread, and the prompt version to use (None = config's current one).
-    Output: a TriageRecord. A reply that stays unusable after the one retry
-    (refusal, no JSON, wrong schema) or a transient API failure does not raise:
+    Output: a TriageRecord. A refusal, a reply still unusable after the one retry
+    (no JSON, wrong schema, cut off) or a transient API failure does not raise:
     it yields the fallback result (confidence 0, signal parse_error), which the
     priority rules send to human review. Configuration errors (missing or
     rejected key, bad model) do raise.

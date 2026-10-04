@@ -31,7 +31,6 @@ class LLMResult:
     request_id: str | None
     input_tokens: int  # summed over both attempts
     output_tokens: int
-    attempts: int
 
 
 class LLMError(Exception):
@@ -72,8 +71,10 @@ def call_json(model: str, system: str, user: str, *, max_tokens: int,
     Inputs: model ID, system prompt, user message, max_tokens; optionally a
     Pydantic `schema` the object must satisfy; model-specific request options
     (e.g. extra_body for Haiku's temperature, output_config for Sonnet).
-    A reply that is not one JSON object, or fails the schema, is retried once
-    with a note quoting the problem (D-21).
+    A reply that is not one JSON object, fails the schema, or was cut off at
+    max_tokens is retried once with a note quoting the problem (D-21). A cut-off
+    reply is not parsed at all: it is incomplete by definition, and naming the
+    real cause beats reporting "not a single JSON object".
     Output: LLMResult (parsed object, raw text, model, request ID, tokens).
     Raises: LLMError on a refusal or a second unusable reply; SDK errors for
     API failures the SDK's own retries could not clear.
@@ -91,10 +92,13 @@ def call_json(model: str, system: str, user: str, *, max_tokens: int,
         log.debug("llm %s attempt=%d stop=%s", model, attempt, response.stop_reason)
         if response.stop_reason == "refusal":
             raise LLMError("the model declined to answer (refusal)", text, tokens_in, tokens_out)
-        data, problem = check_reply(text, schema)
+        if response.stop_reason == "max_tokens":
+            data, problem = None, "the reply was cut off at max_tokens"
+        else:
+            data, problem = check_reply(text, schema)
         if data is not None:
             request_id = getattr(response, "_request_id", None)
-            return LLMResult(data, text, response.model, request_id, tokens_in, tokens_out, attempt)
+            return LLMResult(data, text, response.model, request_id, tokens_in, tokens_out)
         content = f"{user}\n\nYour previous reply was rejected: {problem}. Reply with only the corrected JSON object."
     raise LLMError(f"the reply was rejected twice: {problem}", text, tokens_in, tokens_out)
 

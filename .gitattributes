@@ -1,0 +1,3 @@
+# Markdown keeps LF line endings on every platform, so the docs check's byte caps (scripts/docs-check.mjs)
+# mean the same on a Windows checkout as on macOS or Linux.
+*.md text eol=lf

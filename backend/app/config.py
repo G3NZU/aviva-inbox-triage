@@ -39,16 +39,16 @@ PRICE_PER_MTOK = {"claude-haiku-4-5": (1.00, 5.00), "claude-sonnet-5-5": (2.00, 
 
 # --- Prompt versions (files in app/prompts/) ----------------------------------
 TRIAGE_PROMPT_VERSION = "triage_v2"  # v1 kept for comparison (backend/eval/results.md)
-QA_PROMPT_VERSION = "qa_v1"
+QA_PROMPT_VERSION = "qa_v3"  # v3: "what to focus on" names the top 3 (D-52); v2 adds the workload (D-47)
 
 # --- Priority policy (the rules themselves are in app/priority.py) ----------
-PRIORITY_RULES_VERSION = "rules_v1"  # bump when a rule changes; stored with every priority
+PRIORITY_RULES_VERSION = "rules_v2"  # bump when a rule changes; stored with every priority
 CONFIDENCE_THRESHOLD = 0.6  # below this a human reviews the item (bucket "review")
 P1_DEADLINE_DAYS = 2  # a deadline overdue or due within this many days -> P1
 P2_DEADLINE_DAYS = 7  # due within this many days -> P2
-UNANSWERED_WORKING_DAYS = 5  # older than this with no reply from us -> P2
-# "Today" for age and deadline rules. The dataset ends on 2026-02-20, so ages
-# are measured from there. In production this would be date.today().
+UNANSWERED_WORKING_DAYS = 5  # latest message from outside, waiting on us longer than this -> P2
+# "Today" for waiting times and deadlines. The dataset ends on 2026-02-20, so
+# both are measured from there. In production this would be date.today().
 AS_OF_DATE = date(2026, 2, 20)
 INTERNAL_DOMAIN = "pinnacle-insurance.co.uk"  # senders on this domain are "us"
 
