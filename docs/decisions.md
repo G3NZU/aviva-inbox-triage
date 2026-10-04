@@ -325,3 +325,8 @@ The design decisions behind this repo, numbered in the order they were made. Eac
 - Decision: every model call goes through `llm.call_json` (one `messages.create`, parsing, schema check, one retry); triage and Q&A are plain functions that call it. No LangChain, LlamaIndex or agent framework.
 - Why: the app makes two fixed kinds of call, one per thread and one per question, with no tools, chains or agents to orchestrate; every request, retry and audit row can be read in one 160-line file.
 - Alternative rejected: LangChain or an agent framework (more concepts and dependencies to explain, and each request hidden behind abstractions).
+
+**D-61 Ask is centred on the page** (revises D-51's shared left edge)
+- Decision: the heading and question box form one centred 768 px block; the answer and its sources a centred 1024 px column below it.
+- Why: on a wide screen the left-aligned page left most of the width empty on one side, and the owner found it lopsided. Ask is a reading page, not a list, so it need not share the Workload's left edge.
+- Alternative rejected: keep the shared left edge (D-51); one centred column with the question box at its left (it still looked left-weighted before the first answer).

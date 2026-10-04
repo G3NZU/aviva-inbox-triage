@@ -21,7 +21,7 @@
 - README: quick start, how it works (diagram, rules table, one worked example), decisions with the alternatives rejected (D-59 one provider, D-60 no framework), how it was built.
 - Backend review: a failed question is now audited (`ask_error`); "company domain" reasons; stale docstrings; unused `LLMResult.attempts`. A review agent's stray Sonnet call cost $0.016.
 - Frontend review: About this data stays open after a run; Ask keeps focus; a failed AI reading says so; dead icon, CSS and exports gone. Two findings left in techdebt.
-- Clean clone, then a reviewer's zip install: 103 tests, build, pipeline ($0.18; same P1/P2 counts, 2 threads swapped), API, UI. `.gitattributes` keeps .md LF; the checker skips the verbatim brief; README gained Security and Connecting a real mailbox (caps 18/156 KB, owner).
+- Clean clone, then a reviewer's zip install: 103 tests, build, pipeline ($0.18; same P1/P2 counts, 2 threads swapped), API, UI. `.gitattributes` keeps .md LF; the checker skips the verbatim brief; README gained Security and Connecting a real mailbox (caps 18/156 KB, owner). Ask centred (D-61).
 
 ### Earlier (one line each; `git log` for detail)
 - 2026-10-04 Session 5: Ask names the top three (qa_v3, D-52); colour for scanning, dark mode, then a toggle (D-53–D-57); no "Start here"; line of business per row.

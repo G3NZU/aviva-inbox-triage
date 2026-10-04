@@ -101,9 +101,9 @@ export default function Ask({ onOpen, total }: {
   }
   const fill = (example: string) => { setQuestion(example); setTooShort(false); input.current?.focus(); };
   return (
-    <div className="space-y-5">
-      <h2 className="text-xl font-semibold">Ask the mailbox</h2>
-      <div className="max-w-3xl space-y-3">
+    <div className="mx-auto max-w-5xl space-y-5">
+      <h2 className="mx-auto max-w-3xl text-xl font-semibold">Ask the mailbox</h2>
+      <div className="mx-auto max-w-3xl space-y-3">
         <QuestionForm question={question} setQuestion={setQuestion} input={input} tooShort={tooShort} pending={pending}
           total={total} onSubmit={onSubmit} />
         <AskIntro onExample={fill} />

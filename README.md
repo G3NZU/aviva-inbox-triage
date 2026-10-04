@@ -81,7 +81,7 @@ Keyboard and screen-reader friendly; AA contrast in both themes.
 
 ## Decisions and the alternatives rejected
 
-The main choices; all 60, with reasons and the alternatives rejected, are in [docs/decisions.md](docs/decisions.md).
+The main choices; all 61, with reasons and the alternatives rejected, are in [docs/decisions.md](docs/decisions.md).
 
 - **LLM for judgement, code for policy** (D-01). Priority is business policy: rules are readable, tested and versioned, and every priority lists the rules that fired. *Rejected:* the model sets the priority (opaque, hard to test, and every policy change becomes a prompt change).
 - **Haiku 4.5 triages, Sonnet 5.5 answers** (D-02). Extraction into a fixed schema is a small-model job (≈ $0.0036 a thread, 49/50 categories right); Q&A reasons across threads and must cite. *Rejected:* one large model for everything (more cost per email, no gain on categories).
