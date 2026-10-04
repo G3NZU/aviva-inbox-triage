@@ -24,7 +24,7 @@ You need Python 3.14 (tested; 3.11+ should work), Node.js 20.19+ (tested on 24) 
    npm run dev                        # UI on http://localhost:5173
    ```
 5. **Tests** (no key or network needed; the model is mocked): `cd backend` then `pytest`.
-6. **Evaluation**: `cd backend` then `python -m eval.run_eval` (re-scores the stored results, free) or `python -m eval.run_eval --qa` (also re-asks the 12 Q&A questions, ~$0.28). It rewrites `backend/eval/results.md`, so on a fresh clone it scores your own run.
+6. **Evaluation**: `cd backend` then `python -m eval.run_eval` (re-scores the stored results, free) or `python -m eval.run_eval --qa` (also re-asks the 12 Q&A questions, ~$0.28). It rewrites `backend/eval/results.md` with your own run.
 
 In the UI, "About this data" › "Re-run triage" runs the pipeline again; "Re-read all threads…" redoes every thread (`--force`) and asks first. The theme follows the system until you use the header's "Dark mode" toggle.
 
@@ -73,8 +73,8 @@ data/emails_candidate.json         50 threads / 95 messages
 ## The UI
 
 Three screens, no extra libraries; every number comes from the API.
-- **Workload**: six count cards (the summary, and the only priority filter), a line-of-business filter, then every thread in sections, most urgent first. Each row says what to do, why ("Why: Complaint · Regulatory issue"), its line of business and how many working days the sender has waited on us.
-- **Thread**: the suggested next step, why it has its priority (set by the rules), the emails, the AI's reading with its confidence, and the audit record. Previous / Next walks the list.
+- **Workload**: six count cards (the summary and the priority filter), a line-of-business filter, then every thread, most urgent first, each row saying what to do, why, its line of business and how long the sender has waited on us.
+- **Thread**: the suggested next step, why it has its priority (set by the rules), the emails, the AI's reading with its confidence, and the audit record.
 - **Ask**: example questions, then the answer beside the emails it cites (sender and date), or "No answer given".
 
 Keyboard and screen-reader friendly; AA contrast in both themes.
@@ -103,7 +103,7 @@ Golden labels for all 50 threads (seeded from the dataset's thread IDs, then eve
 | Category accuracy | 50/50 | 49/50 (a rebrand notice judged irrelevant, not informational) |
 | Missed actions (action archived or ignored with no human review) | 0 | 0 |
 | P1 precision | 17/20 (85%) | 18/21 (86%) |
-| P1 recall | 17/18 (94%) | **18/18 (100%)** |
+| P1 recall | 17/18 (94%) | **18/18** (95% interval 81–100%) |
 
 v2 tightened the signal definitions and how a weekday deadline ("by Friday") is dated, and is kept for its recall: v1 left a possibly vulnerable customer (a stolen mobility scooter) at P3.
 
@@ -114,8 +114,8 @@ v2 tightened the signal definitions and how a weekday deadline ("by Friday") is 
 ## Security, audit and risk controls
 
 - **Human in control**: nothing is sent, archived or deleted; the handler sees the recommendation, its reasons and the raw emails.
-- **Reproducible**: every triage result stores the raw model output, model, prompt version, request ID, tokens and timestamp; priorities store the rules version and as-of date; every model call, question and run is appended to `audit_log` (append-only in code, not tamper-proof).
-- **Confidence gating**: confidence below 0.6, or unusable model output, sends a thread to review, never silently to archive.
+- **Reproducible**: every triage result stores the raw model output, model, prompt version, request ID, tokens and timestamp; priorities, recomputed each run, store the rules version and as-of date (rebuildable from the audit log); every model call, question and run is appended to `audit_log` (append-only in code, not tamper-proof).
+- **Confidence gating**: confidence below 0.6, or unusable model output, sends a thread to review, never silently to archive. A backstop only: no thread fell below 0.6 in this run, and the model's confidence is uncalibrated.
 - **Grounded Q&A**: answers come only from the matched emails and the open workload, and must cite messages; no valid citation means a refusal.
 - **Prompt injection**: an email is data, not instructions: the model reads it inside tags it is told never to obey, has no tools and can change nothing, and must reply in a strict schema. This limits the damage rather than preventing injection: a crafted email can still steer its own category, signals or confidence, so nothing is archived unseen and the raw email sits beside the AI's reasoning. Next: injection cases in the eval, and keyword backstops for complaint, legal and vulnerability cues. The sender-set importance flag is never used to decide.
 - **Secrets**: the API key lives only in `.env` (gitignored) on the server; the browser never sees it. Production: a key vault and rotation.
@@ -145,7 +145,7 @@ Gmail has the same shape (`users.watch` with Pub/Sub, then `history.list`); IMAP
 
 - **P1 is heavy** (21 of 32 actions): the mailbox is a three-week backlog judged on its last day, and Haiku over-flags some signals (make-safe on a flooded car, injury on routine physio paperwork) even when told not to; signals also vary between runs. Next: send threads where two runs disagree to review; a per-signal test set with few-shot examples; a stronger model only for the P1-deciding signals.
 - **Triage is per thread**, so conflicts across threads go unseen: PIN-MTR-552301 names two different garages; PIN-HOM-547299 is a Swansea roof in one thread and a York tree in another. Next: a cross-thread consistency rule.
-- **Keyword retrieval** suits specific questions; broad ones ("all internal notices") are better served by the Workload filters. The open workload goes whole with every question; at scale it would be retrieved.
+- **Keyword retrieval** suits specific questions; broad ones are better served by the Workload filters. The open workload goes whole with every question; at scale it would be retrieved.
 - **Batch over a JSON file**, single user, no login: production needs the mailbox feed and the access controls above, plus drift monitoring and periodic re-labelling.
 
 ## Cost
@@ -154,7 +154,7 @@ Triage averages ~2,400 input and ~240 output tokens per thread on Haiku 4.5: **�
 
 ## How this was built
 
-Built with Claude Code, an AI coding agent, working from a written brief and rules: one phase at a time, each verified before the next. These files show the process:
+Built with Claude Code, an AI coding agent, from a written brief and rules, one phase at a time, each verified before the next:
 
 - [AGENT_BRIEF.md](AGENT_BRIEF.md): the brief: the task, the design and an eight-phase plan, each phase with its check.
 - [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md): the agent's rules: tests that never call the API, a docstring on every function, every judgement call logged as a decision, docs with one job each and a size cap.
